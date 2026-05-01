@@ -157,7 +157,7 @@ export default function MapDashboard() {
 
           return (
             <Marker key={s.id} position={[s.lat, s.lon]} icon={icon}
-              eventHandlers={{ click: ()=>router.push(`/station/${s.id}`) }}>
+              eventHandlers={{}}>
               <Popup>
                 <div style={{ minWidth:170, padding:4 }}>
                   <div style={{ fontWeight:700, fontSize:13 }}>{s.name}</div>
