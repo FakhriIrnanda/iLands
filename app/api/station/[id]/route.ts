@@ -16,27 +16,50 @@ function generateRainfall(uVals: number[], dates: string[]) {
 }
 
 // Generate alert history from anomaly rows
-function generateAlerts(rows: any[]) {
+function generateAlerts(rows: any[], latestAnomaly: string, latestRisk: string, latestScore: number) {
   const alerts: any[] = []
   let inAlert = false
-  rows.slice(-90).forEach((r, i) => {
+  const last90 = rows.slice(-90)
+
+  last90.forEach((r, i) => {
+    const isLast = i === last90.length - 1
     if (r.anomaly_any === 'YES' && !inAlert) {
       inAlert = true
       const severity = r.risk_score > 70 ? 'CRITICAL' : r.risk_score > 40 ? 'WARNING' : 'WATCH'
+      // Last row + still anomaly = ACTIVE, otherwise Resolved
+      const isActive = isLast && latestAnomaly === 'YES'
       alerts.push({
         id: alerts.length + 1,
         date: r.date,
-        severity,
+        severity: isActive ? (latestScore > 70 ? 'CRITICAL' : latestScore > 40 ? 'WARNING' : 'WATCH') : severity,
         trigger: r.zscore_u > 3 ? 'Z-score exceeded 3σ threshold' :
                  r.h_vel_mmday && r.h_vel_mmday > 5 ? 'Horizontal velocity > 5mm/day' :
                  'Displacement anomaly detected',
-        riskScore: r.risk_score,
-        resolved: true,
+        riskScore: isActive ? latestScore : r.risk_score,
+        resolved: !isActive,
+        active: isActive,
       })
     } else if (r.anomaly_any === 'NO') {
       inAlert = false
     }
   })
+
+  // Also add a live active alert if latest is anomaly but not captured above
+  if (latestAnomaly === 'YES') {
+    const alreadyActive = alerts.some(a => a.active)
+    if (!alreadyActive) {
+      alerts.unshift({
+        id: 0,
+        date: rows[rows.length-1].date,
+        severity: latestScore > 70 ? 'CRITICAL' : latestScore > 40 ? 'WARNING' : 'WATCH',
+        trigger: 'Active anomaly — live displacement exceeding threshold',
+        riskScore: latestScore,
+        resolved: false,
+        active: true,
+      })
+    }
+  }
+
   return alerts.slice(-10).reverse()
 }
 
@@ -107,7 +130,7 @@ export async function GET(
   }
 
   const latest = allRows[allRows.length - 1]
-  const alerts = generateAlerts(allRows)
+  const alerts = generateAlerts(allRows, latest.anomaly_any, latest.risk_level, latest.risk_score)
   const sensors = simulateSensors(latest.risk_score, 'STABLE')
   const sysStatus = systemStatus()
 

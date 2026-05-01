@@ -366,8 +366,20 @@ export default function StationDetail() {
                       </div>
                     </div>
                     <div style={{ fontSize:10, color:'#94a3b8', flexShrink:0 }}>{alert.date}</div>
-                    <div style={{ fontSize:10, background:'#dcfce7', color:'#16a34a',
-                      borderRadius:10, padding:'1px 6px', flexShrink:0 }}>Resolved</div>
+                    {alert.active ? (
+                    <div style={{ display:'flex', alignItems:'center', gap:4,
+                      background:'#fef2f2', color:'#dc2626', borderRadius:10,
+                      padding:'2px 8px', flexShrink:0, fontWeight:700, fontSize:10 }}>
+                      <span style={{ width:6, height:6, borderRadius:'50%', background:'#dc2626',
+                        display:'inline-block', animation:'blink 0.8s infinite' }}/>
+                      ACTIVE
+                    </div>
+                  ) : (
+                    <div style={{ background:'#dcfce7', color:'#16a34a',
+                      borderRadius:10, padding:'2px 8px', flexShrink:0, fontSize:10, fontWeight:600 }}>
+                      Resolved
+                    </div>
+                  )}
                   </div>
                 ))}
               </div>
@@ -492,6 +504,7 @@ export default function StationDetail() {
       </div>
       <style>{`
         @keyframes ping  { 0%,100%{transform:scale(1);opacity:0.6} 50%{transform:scale(1.8);opacity:0} }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes spin  { to{transform:rotate(360deg)} }
       `}</style>
     </div>
