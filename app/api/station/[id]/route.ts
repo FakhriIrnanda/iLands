@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { parseStationCSV, getStationMeta } from '@/lib/parseCSV'
+import { getActiveEvent } from '@/lib/simState'
 
 // Generate synthetic rainfall correlated with vertical displacement
 function generateRainfall(uVals: number[], dates: string[]) {
@@ -130,7 +131,14 @@ export async function GET(
   }
 
   const latest = allRows[allRows.length - 1]
-  const alerts = generateAlerts(allRows, latest.anomaly_any, latest.risk_level, latest.risk_score)
+  
+  // Check if simulation is active — override anomaly/risk for alert generation
+  const simEvent = getActiveEvent(id)
+  const liveAnomaly = simEvent ? 'YES' : latest.anomaly_any
+  const liveRisk    = simEvent ? (simEvent.intensity >= 2 ? 'HIGH' : 'MEDIUM') : latest.risk_level
+  const liveScore   = simEvent ? 100 : latest.risk_score
+  
+  const alerts = generateAlerts(allRows, liveAnomaly, liveRisk, liveScore)
   const sensors = simulateSensors(latest.risk_score, 'STABLE')
   const sysStatus = systemStatus()
 
