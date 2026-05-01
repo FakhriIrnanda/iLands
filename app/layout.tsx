@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'GNSS Early Warning Dashboard',
+  title: 'iLands — Intelligent Landslide Monitoring System',
   description: 'AI-Assisted Real-Time GNSS Monitoring & Landslide Early Warning System',
 }
 
