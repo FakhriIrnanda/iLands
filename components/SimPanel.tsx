@@ -24,6 +24,8 @@ export default function SimPanel() {
   const [simState,  setSimState]  = useState<Record<string,any>>({})
   const [liveData,  setLiveData]  = useState<Record<string,any>>({})
   const [ticks,     setTicks]     = useState<Record<string,number>>({})
+  const [scenario,  setScenario]  = useState('normal')
+  const [scenarioLoading, setScenarioLoading] = useState(false)
   const intervalRef = useRef<any>(null)
 
   // Poll sim state + live data
@@ -53,6 +55,32 @@ export default function SimPanel() {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ stationId:selected, action:'trigger', intensity }),
     })
+  }
+
+  const triggerScenario = async (sc: string) => {
+    setScenarioLoading(true)
+    // Reset all first
+    await fetch('/api/simulate', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ stationId:'BAKO', action:'reset_all' }) })
+
+    if (sc === 'warning') {
+      for (const id of ['MYVA','CUSV']) {
+        await fetch('/api/simulate', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ stationId:id, action:'trigger', intensity:1 }) })
+      }
+    } else if (sc === 'critical') {
+      for (const id of ['BAKO','MYVA','SAMP']) {
+        await fetch('/api/simulate', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ stationId:id, action:'trigger', intensity:3 }) })
+      }
+    } else if (sc === 'heavy_rain') {
+      for (const id of ['NTUS','SAMP']) {
+        await fetch('/api/simulate', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ stationId:id, action:'trigger', intensity:2 }) })
+      }
+    }
+    setScenario(sc)
+    setScenarioLoading(false)
   }
 
   const reset = async (id?: string) => {
@@ -226,6 +254,52 @@ export default function SimPanel() {
             </div>
           </div>
         )}
+
+        {/* ── NETWORK SCENARIO SIMULATOR ── */}
+        <div style={{ background:'#0f2044', border:'1px solid #1e3a5f', borderRadius:12,
+          padding:'14px 16px', marginBottom:14 }}>
+          <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', letterSpacing:'0.1em', marginBottom:10 }}>
+            🌐 NETWORK SCENARIO — Multi-Source AI Page
+          </div>
+          <div style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>
+            Select a scenario to inject into <b style={{color:'#93c5fd'}}>all stations</b> simultaneously.
+            View the effect at <b style={{color:'#a78bfa'}}>/multisource</b>.
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+            {[
+              { id:'normal',     emoji:'🟢', label:'Normal',      desc:'All stable, reset all',           color:'#16a34a', bg:'#14532d' },
+              { id:'warning',    emoji:'🟡', label:'Warning',     desc:'2 sites anomaly, medium risk',     color:'#d97706', bg:'#713f12' },
+              { id:'critical',   emoji:'🔴', label:'Critical',    desc:'3 sites failure, network CRITICAL',color:'#dc2626', bg:'#7f1d1d' },
+              { id:'heavy_rain', emoji:'🌧',  label:'Heavy Rain', desc:'Rainfall-triggered displacement',  color:'#2563eb', bg:'#1e3a6e' },
+            ].map(sc => (
+              <button key={sc.id} onClick={()=>triggerScenario(sc.id)}
+                disabled={scenarioLoading}
+                style={{
+                  background: scenario===sc.id ? sc.bg : '#111e38',
+                  border:`1px solid ${scenario===sc.id ? sc.color : '#1e3a5f'}`,
+                  borderRadius:10, padding:'10px 12px', cursor:'pointer', textAlign:'left' as const,
+                  opacity: scenarioLoading ? 0.6 : 1
+                }}>
+                <div style={{ fontSize:14, marginBottom:3 }}>{sc.emoji}</div>
+                <div style={{ fontSize:11, fontWeight:700, color: scenario===sc.id ? sc.color : 'white' }}>{sc.label}</div>
+                <div style={{ fontSize:9, color:'#64748b', marginTop:1 }}>{sc.desc}</div>
+                {scenario===sc.id && <div style={{ marginTop:4, fontSize:9, color:sc.color, fontWeight:700 }}>● ACTIVE</div>}
+              </button>
+            ))}
+          </div>
+          {scenarioLoading && (
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#94a3b8' }}>
+              <div style={{ width:10, height:10, border:'2px solid #7c3aed', borderTopColor:'transparent', borderRadius:'50%', animation:'blink 0.8s infinite' }}/>
+              Applying scenario…
+            </div>
+          )}
+          <button onClick={()=>router.push('/multisource')}
+            style={{ width:'100%', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+              background:'#4c1d95', color:'#c4b5fd', border:'1px solid #5b21b6',
+              borderRadius:8, padding:'8px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+            🧠 View Multi-Source AI Analysis →
+          </button>
+        </div>
 
         {/* Action buttons */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
