@@ -139,7 +139,6 @@ export async function GET(
   const liveScore   = simEvent ? 100 : latest.risk_score
   
   const alerts = generateAlerts(allRows, liveAnomaly, liveRisk, liveScore)
-  const sensors = simulateSensors(latest.risk_score, 'STABLE')
   const sysStatus = systemStatus()
 
   // Movement trend: compare last 7 days velocity vs prev 7 days
@@ -167,7 +166,6 @@ export async function GET(
     anomalyCount: allRows.filter(r => r.anomaly_any === 'YES').length,
     totalDays: allRows.length,
     alerts,
-    sensors,
     systemStatus: sysStatus,
     summary: {
       trend,

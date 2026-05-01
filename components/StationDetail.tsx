@@ -12,6 +12,7 @@ import { ArrowLeft, Brain, TrendingUp, FileText, AlertTriangle,
 interface LiveData {
   station: string; epochTime: string; serverTime: string; phase: string
   tick: number; totalTicks: number
+  simulation?: { active: boolean; phase?: string; progress?: number; intensity?: number; timeLeft?: number }
   current: {
     date: string; e: number; n: number; u: number
     e_vel: number|null; n_vel: number|null; u_vel: number|null; h_vel: number|null
@@ -132,7 +133,6 @@ export default function StationDetail() {
   })()
   const statusCfg = STATUS_CONFIG[overallStatus as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.STABLE
   const ss            = stationData?.systemStatus
-  const sensors       = stationData?.sensors
 
   return (
     <div style={{ minHeight:'100vh', background:'#f8fafc', fontFamily:'system-ui,sans-serif' }}>
@@ -342,11 +342,45 @@ export default function StationDetail() {
               <Bell size={13} color="#d97706"/>
               <SectionTitle>Alert History</SectionTitle>
               <span style={{ marginLeft:'auto', fontSize:10, fontWeight:700,
-                color: stationData.alerts.length > 0 ? '#d97706' : '#16a34a' }}>
+                color: (live?.current.anomaly === 'YES' || stationData.alerts.length > 0) ? '#d97706' : '#16a34a' }}>
                 {stationData.alerts.length} alerts (last 90 days)
               </span>
             </div>
-            {stationData.alerts.length === 0 ? (
+
+            {/* Live active alert — from state machine, not CSV */}
+            {live?.current.anomaly === 'YES' && (
+              <div style={{ display:'flex', alignItems:'center', gap:8,
+                background:'#fef2f2', borderRadius:8, padding:'10px 12px', marginBottom:8,
+                borderLeft:`3px solid ${live.current.risk==='HIGH'?'#dc2626':'#d97706'}`,
+                border:`1px solid ${live.current.risk==='HIGH'?'#fca5a5':'#fde68a'}` }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700,
+                    color:live.current.risk==='HIGH'?'#dc2626':'#d97706' }}>
+                    {live.current.score >= 70 ? 'CRITICAL' : live.current.score >= 40 ? 'WARNING' : 'WATCH'}
+                  </div>
+                  <div style={{ fontSize:10, color:'#64748b', marginTop:2 }}>
+                    {live.simulation?.active
+                      ? `Simulated event: ${live.simulation.phase} · ${live.simulation.progress}% complete`
+                      : live.current.score >= 70
+                      ? 'Rapid displacement detected — exceeds critical threshold'
+                      : 'Anomalous displacement detected — monitoring closely'}
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:'#94a3b8', flexShrink:0 }}>
+                  {new Date().toLocaleTimeString('en-GB')}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:4,
+                  background:'#fef2f2', color:'#dc2626', borderRadius:10,
+                  padding:'2px 8px', flexShrink:0, fontWeight:700, fontSize:10,
+                  border:'1px solid #fca5a5' }}>
+                  <span style={{ width:6, height:6, borderRadius:'50%', background:'#dc2626',
+                    display:'inline-block', animation:'blink 0.8s infinite' }}/>
+                  ACTIVE
+                </div>
+              </div>
+            )}
+
+            {stationData.alerts.length === 0 && live?.current.anomaly !== 'YES' ? (
               <div style={{ fontSize:12, color:'#94a3b8', textAlign:'center', padding:'12px 0' }}>
                 ✓ No alerts in the last 90 days
               </div>
@@ -366,20 +400,10 @@ export default function StationDetail() {
                       </div>
                     </div>
                     <div style={{ fontSize:10, color:'#94a3b8', flexShrink:0 }}>{alert.date}</div>
-                    {alert.active ? (
-                    <div style={{ display:'flex', alignItems:'center', gap:4,
-                      background:'#fef2f2', color:'#dc2626', borderRadius:10,
-                      padding:'2px 8px', flexShrink:0, fontWeight:700, fontSize:10 }}>
-                      <span style={{ width:6, height:6, borderRadius:'50%', background:'#dc2626',
-                        display:'inline-block', animation:'blink 0.8s infinite' }}/>
-                      ACTIVE
-                    </div>
-                  ) : (
                     <div style={{ background:'#dcfce7', color:'#16a34a',
                       borderRadius:10, padding:'2px 8px', flexShrink:0, fontSize:10, fontWeight:600 }}>
                       Resolved
                     </div>
-                  )}
                   </div>
                 ))}
               </div>
@@ -387,26 +411,7 @@ export default function StationDetail() {
           </Card>
         )}
 
-        {/* ── GEOTECHNICAL SENSORS ── */}
-        {sensors && (
-          <Card style={{ marginBottom:12 }}>
-            <SectionTitle>Geotechnical Sensors (Simulated)</SectionTitle>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-              {Object.entries(sensors).map(([key, s]: [string, any]) => (
-                <div key={key} style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px' }}>
-                  <div style={{ fontSize:9, color:'#94a3b8', fontWeight:600, marginBottom:4 }}>{s.label}</div>
-                  <div style={{ fontSize:18, fontWeight:800, color:'#0f172a', fontFamily:'monospace' }}>
-                    {s.value}<span style={{ fontSize:10, color:'#94a3b8', marginLeft:2 }}>{s.unit}</span>
-                  </div>
-                  <div style={{ fontSize:10, fontWeight:600, marginTop:3,
-                    color:s.status==='NORMAL'?'#16a34a':s.status==='WARNING'?'#dc2626':'#d97706' }}>
-                    ● {s.status}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
+
 
         {/* ── SYSTEM STATUS ── */}
         {ss && (
