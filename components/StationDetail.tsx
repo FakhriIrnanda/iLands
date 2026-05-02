@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, ReferenceLine, Legend, BarChart, Bar, ComposedChart, Area
 } from 'recharts'
 import { ArrowLeft, Brain, TrendingUp, FileText, AlertTriangle,
-         Wifi, Battery, Satellite, CloudRain, Activity, Bell } from 'lucide-react'
+         Wifi, Battery, Satellite, CloudRain, Activity, Bell, Download } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LiveData {
@@ -82,7 +82,9 @@ export default function StationDetail() {
   const [ai, setAI]                   = useState<AIDecision|null>(null)
   const [aiLoading, setAILoading]     = useState(false)
   const [serverTime, setServerTime]   = useState(new Date())
-  const tickRef = useRef(0)
+  const [downloading, setDownloading] = useState(false)
+  const reportRef = useRef<HTMLDivElement>(null)
+  const tickRef   = useRef(0)
 
   useEffect(() => {
     const t = setInterval(() => setServerTime(new Date()), 1000)
@@ -102,6 +104,65 @@ export default function StationDetail() {
     }, 15000)
     return () => clearInterval(aiInterval)
   }, [id])
+
+  const downloadPDF = async () => {
+    if (!reportRef.current) return
+    setDownloading(true)
+    try {
+      const { default: jsPDF }       = await import('jspdf')
+      const { default: html2canvas } = await import('html2canvas')
+      const el = reportRef.current
+
+      // Temporarily expand all cards to avoid clipping
+      const origStyle = el.style.cssText
+      el.style.height = 'auto'
+      el.style.overflow = 'visible'
+
+      await new Promise(r => setTimeout(r, 300))
+
+      const canvas = await html2canvas(el, {
+        scale: 1.8,
+        useCORS: true,
+        backgroundColor: '#f8fafc',
+        windowWidth: 900,
+        scrollY: -window.scrollY,
+        height: el.scrollHeight,
+        width: el.scrollWidth,
+      })
+
+      el.style.cssText = origStyle
+
+      const pdf     = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+      const pageW   = pdf.internal.pageSize.getWidth()
+      const pageH   = pdf.internal.pageSize.getHeight()
+      const margin  = 12
+      const usableW = pageW - margin * 2
+      const usableH = pageH - margin * 2
+
+      // Scale canvas to A4 width
+      const ratio  = usableW / (canvas.width / (96/25.4))
+      const imgW   = usableW
+      const imgH   = (canvas.height / (96/25.4)) * ratio
+      const totalPages = Math.ceil(imgH / usableH)
+
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage()
+        const yOffset = -(page * usableH)
+        pdf.addImage(
+          canvas.toDataURL('image/jpeg', 0.92),
+          'JPEG', margin, margin + yOffset, imgW, imgH, '', 'FAST'
+        )
+        // Clip to page
+        pdf.setFillColor(255, 255, 255)
+        pdf.rect(0, 0, pageW, margin, 'F')
+        pdf.rect(0, pageH - margin, pageW, margin*2, 'F')
+      }
+
+      const name = stationData?.meta?.name ?? id
+      pdf.save(`iLands_${name.replace(/ /g,'_')}_${new Date().toLocaleDateString('en-GB').split('/').reverse().join('-')}.pdf`)
+    } catch(e) { console.error(e); alert('PDF failed. Try again.') }
+    finally { setDownloading(false) }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -168,10 +229,15 @@ export default function StationDetail() {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <button onClick={() => router.push('/report')}
-            style={{ display:'flex', alignItems:'center', gap:4, background:'#1e40af', color:'white',
-              border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600, cursor:'pointer' }}>
-            <FileText size={12}/> Report
+          <button onClick={downloadPDF} disabled={downloading}
+            style={{ display:'flex', alignItems:'center', gap:4,
+              background: downloading?'#94a3b8':'#16a34a', color:'white',
+              border:'none', borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:600,
+              cursor: downloading?'wait':'pointer' }}>
+            {downloading
+              ? <><div style={{ width:11, height:11, border:'2px solid white', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/> PDF…</>
+              : <><Download size={12}/> Download PDF</>
+            }
           </button>
           <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11 }}>
             <LiveDot/>
@@ -182,7 +248,7 @@ export default function StationDetail() {
         </div>
       </div>
 
-      <div style={{ padding:'14px' }}>
+      <div ref={reportRef} style={{ padding:'14px' }}>
 
         {/* ── SIMPLE STATEMENT BANNER ── */}
         {ai?.simpleStatement && (
@@ -214,35 +280,89 @@ export default function StationDetail() {
                 borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
               Generating AI assessment…
             </div>
-          ) : ai ? (<>
-            {/* Decision grid */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
-              {[
-                { label:'Movement Trend', val: ai.movementTrend,
-                  color: ai.movementTrend==='Increasing'?'#dc2626':ai.movementTrend==='Decreasing'?'#16a34a':'#d97706' },
-                { label:'Rainfall Influence', val: ai.rainfallInfluence,
-                  color: ai.rainfallInfluence==='Detected'?'#d97706':'#16a34a' },
-                { label:'Risk Level', val: ai.riskLevel,
-                  color: ai.riskLevel==='High'?'#dc2626':ai.riskLevel==='Medium'?'#d97706':'#16a34a' },
-                { label:'Status', val: overallStatus,
-                  color: statusCfg.color },
-              ].map(({ label, val, color }) => (
-                <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 10px' }}>
-                  <div style={{ fontSize:9, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>{label}</div>
-                  <div style={{ fontSize:13, fontWeight:800, color }}>{val}</div>
+          ) : ai ? (
+            <div style={{ fontSize:13, color:'#374151' }}>
+
+              {/* Status bar */}
+              <div style={{
+                display:'flex', alignItems:'center', justifyContent:'space-between',
+                background: ai.riskLevel==='High'?'#fee2e2':ai.riskLevel==='Medium'?'#fef3c7':'#f0fdf4',
+                borderRadius:8, padding:'8px 12px', marginBottom:12
+              }}>
+                <span style={{ fontSize:12, color:'#64748b' }}>Current Status</span>
+                <span style={{ fontWeight:800, fontSize:13,
+                  color: ai.riskLevel==='High'?'#dc2626':ai.riskLevel==='Medium'?'#d97706':'#16a34a' }}>
+                  {ai.riskLevel==='High'?'🔴':ai.riskLevel==='Medium'?'🟡':'🟢'} {ai.riskLevel.toUpperCase()} ({overallStatus})
+                </span>
+              </div>
+
+              {/* Stats row */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:12 }}>
+                {[
+                  { label:'Movement', val:`${live?.current.h_vel?.toFixed(2) ?? '—'} mm/day` },
+                  { label:'Trend', val: ai.movementTrend==='Increasing'?'↑ Increasing': ai.movementTrend==='Decreasing'?'↓ Decreasing':'→ Stable',
+                    color: ai.movementTrend==='Increasing'?'#dc2626':ai.movementTrend==='Decreasing'?'#16a34a':'#d97706' },
+                  { label:'Rainfall 24h', val:`${stationData?.last30?.[stationData.last30.length-1]?.rainfall?.toFixed(0) ?? '—'} mm` },
+                ].map(({label, val, color}:any) => (
+                  <div key={label} style={{ background:'#f8fafc', borderRadius:8, padding:'8px 10px', border:'1px solid #e2e8f0' }}>
+                    <div style={{ fontSize:9, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>{label}</div>
+                    <div style={{ fontSize:12, fontWeight:700, color: color ?? '#1e293b' }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* AI Decision */}
+              <div style={{ marginBottom:10 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:'#7c3aed', marginBottom:6, letterSpacing:'0.08em' }}>AI DECISION</div>
+                <div style={{ display:'flex', flexDirection:'column' as const, gap:5 }}>
+                  {[
+                    {
+                      icon: (live?.current.h_vel ?? 0) > 5 ? '🔴' : (live?.current.h_vel ?? 0) > 2 ? '🟡' : '🟢',
+                      text: (live?.current.h_vel ?? 0) > 5
+                        ? `Movement accelerating (${live?.current.h_vel?.toFixed(2)} mm/day > 5 mm/day threshold)`
+                        : (live?.current.h_vel ?? 0) > 2
+                        ? `Movement moderate — monitor closely (${live?.current.h_vel?.toFixed(2)} mm/day)`
+                        : `Movement within safe range (${live?.current.h_vel?.toFixed(2) ?? '—'} mm/day < 2 mm/day)`
+                    },
+                    {
+                      icon: live?.current.anomaly==='YES' ? '🔴' : '🟢',
+                      text: live?.current.anomaly==='YES'
+                        ? `Abnormal acceleration detected (Z-score: ${live?.current.zscore_u?.toFixed(2)}σ > 3σ)`
+                        : `No abnormal acceleration (Z-score: ${live?.current.zscore_u?.toFixed(2)}σ)`
+                    },
+                    {
+                      icon: ai.rainfallInfluence==='Detected' ? '🟡' : '🟢',
+                      text: `Rainfall impact: ${ai.rainfallInfluence==='Detected'?'Moderate':'Low'} (${stationData?.last30?.[stationData.last30.length-1]?.rainfall?.toFixed(0) ?? '—'} mm/24h)`
+                    },
+                  ].map((item, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8,
+                      background:'#f8fafc', borderRadius:7, padding:'7px 10px', border:'1px solid #e2e8f0' }}>
+                      <span style={{ fontSize:12, flexShrink:0, marginTop:1 }}>{item.icon}</span>
+                      <span style={{ fontSize:12, color:'#374151', lineHeight:1.5 }}>{item.text}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Recommendation */}
-            <div style={{ background:'#ede9fe', borderRadius:8, padding:'10px 12px', marginBottom:10 }}>
-              <div style={{ fontSize:9, color:'#7c3aed', fontWeight:700, marginBottom:4 }}>RECOMMENDATION</div>
-              <div style={{ fontSize:12, color:'#4c1d95', fontWeight:500 }}>{ai.recommendation}</div>
-            </div>
+              {/* Recommendation */}
+              <div style={{ background:'#ede9fe', borderRadius:8, padding:'10px 12px', border:'1px solid #ddd6fe' }}>
+                <div style={{ fontSize:10, fontWeight:700, color:'#7c3aed', marginBottom:6, letterSpacing:'0.08em' }}>RECOMMENDATION</div>
+                <div style={{ display:'flex', flexDirection:'column' as const, gap:4 }}>
+                  {[
+                    ai.riskLevel==='High' ? '🚨 Immediate field inspection required'
+                      : ai.movementTrend==='Increasing' ? `⚠ Increase monitoring — velocity trending up at ${live?.current.h_vel?.toFixed(2)} mm/day`
+                      : '✅ Continue standard monitoring',
+                    ai.riskLevel==='High' ? '🚨 Alert emergency response team' : '✅ No immediate action required',
+                  ].map((rec, i) => (
+                    <div key={i} style={{ fontSize:12, color: rec.startsWith('🚨')?'#dc2626':rec.startsWith('⚠')?'#d97706':'#16a34a', fontWeight:500 }}>
+                      {rec}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-            {/* Narrative insight */}
-            <p style={{ margin:0, fontSize:12, lineHeight:1.7, color:'#374151' }}>{ai.insight}</p>
-          </>) : null}
+            </div>
+          ) : null}
         </Card>
 
         {/* ── LIVE E/N/U ── */}

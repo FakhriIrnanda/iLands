@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Bar } from 'recharts'
 import { ArrowLeft, Brain, RefreshCw, Activity, CloudRain, Satellite, Mountain, Thermometer, TrendingUp, AlertTriangle, CheckCircle, Zap, Download, Shield } from 'lucide-react'
+import { useLiveData } from '@/lib/LiveDataContext'
 
 interface MultiSourceData {
   allData: any[]; sensorData: any[]
@@ -103,8 +104,10 @@ export default function MultiSource() {
   const [data, setData]     = useState<MultiSourceData|null>(null)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected]   = useState(0)
-  const [downloading, setDownloading] = useState(false)
-  const reportRef = useRef<HTMLDivElement>(null)
+  const [downloading, setDownloading]     = useState(false)
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const reportRef     = useRef<HTMLDivElement>(null)
+  const prevStatusRef = useRef<string>('STABLE')
 
   const fetchData = () => {
     setLoading(true)
@@ -177,6 +180,18 @@ export default function MultiSource() {
     }
   }
 
+  const { networkStatus: ctxStatus, lastUpdated } = useLiveData()
+
+  // Sync with context — re-fetch AI analysis when network status changes
+  useEffect(() => {
+    if (!ctxStatus) return
+    if (ctxStatus !== prevStatusRef.current) {
+      prevStatusRef.current = ctxStatus
+      fetchData()
+      setLastRefresh(new Date())
+    }
+  }, [ctxStatus])
+
   useEffect(()=>{ fetchData() },[])
 
 
@@ -227,9 +242,15 @@ export default function MultiSource() {
               <><Download size={12}/> Export PDF</>
             )}
           </button>
-          <button onClick={fetchData} disabled={loading} style={{ display:'flex', alignItems:'center', gap:5, background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:11, color:'#475569' }}>
-            <RefreshCw size={12} style={{ animation:loading?'spin 1s linear infinite':'none' }}/> Refresh
-          </button>
+          <div style={{ display:'flex', flexDirection:'column' as const, alignItems:'flex-end', gap:3 }}>
+            <button onClick={()=>{ fetchData(); setLastRefresh(new Date()) }} disabled={loading}
+              style={{ display:'flex', alignItems:'center', gap:5, background:'#f1f5f9', border:'1px solid #e2e8f0', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:11, color:'#475569' }}>
+              <RefreshCw size={12} style={{ animation:loading?'spin 1s linear infinite':'none' }}/> Refresh
+            </button>
+            <div style={{ fontSize:9, color:'#94a3b8' }}>
+              Synced {lastRefresh.toLocaleTimeString('en-GB')} · live
+            </div>
+          </div>
         </div>
       </div>
 
@@ -241,16 +262,29 @@ export default function MultiSource() {
       ) : data ? (
         <div ref={reportRef} style={{ padding:'14px', maxWidth:900, margin:'0 auto' }}>
 
-          {/* ── 1. NETWORK STATUS ── */}
-          <div style={{ background:`linear-gradient(135deg, ${statusCfg.color}22, ${statusCfg.color}11)`, border:`1px solid ${statusCfg.color}44`, borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <Activity size={18} color={statusCfg.color}/>
-              <div>
-                <div style={{ fontSize:16, fontWeight:800, color:statusCfg.color }}>{statusCfg.label} — {data.ai?.overallRisk} Risk</div>
-                <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>{data.ai?.narrative}</div>
+          {/* ── 1. SITE STATUS (per selected site) ── */}
+          {site && (() => {
+            const siteStatus = site.classification.overallStatus as keyof typeof STATUS_CFG
+            const siteCfg    = STATUS_CFG[siteStatus] ?? STATUS_CFG.STABLE
+            const siteInsight = site.classification.riskLevel === 'High'
+              ? `${site.meta?.name} (${site.meta?.location?.split(',')[0]}) is currently at HIGH risk with score ${site.latest.score}/100. Movement trend is ${site.classification.movementTrend.toLowerCase()} with ${site.classification.rainfallImpact.toLowerCase()} rainfall impact. Ground condition is ${site.classification.groundCondition.toLowerCase()} — immediate monitoring is required.`
+              : site.classification.riskLevel === 'Medium'
+              ? `${site.meta?.name} (${site.meta?.location?.split(',')[0]}) shows MEDIUM risk conditions with score ${site.latest.score}/100. Movement is ${site.classification.movementTrend.toLowerCase()} with ${site.classification.rainfallImpact.toLowerCase()} rainfall influence. Continue close monitoring.`
+              : `${site.meta?.name} (${site.meta?.location?.split(',')[0]}) is currently STABLE with a low risk score of ${site.latest.score}/100. No significant displacement anomalies detected. Continue standard monitoring protocols.`
+            return (
+              <div style={{ background:`linear-gradient(135deg, ${siteCfg.color}22, ${siteCfg.color}11)`, border:`1px solid ${siteCfg.color}44`, borderRadius:12, padding:'14px 16px', marginBottom:14 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <Activity size={18} color={siteCfg.color}/>
+                  <div>
+                    <div style={{ fontSize:16, fontWeight:800, color:siteCfg.color }}>
+                      {siteCfg.label} — {site.classification.riskLevel} Risk · {site.meta?.name}
+                    </div>
+                    <div style={{ fontSize:12, color:'#475569', marginTop:2 }}>{siteInsight}</div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            )
+          })()}
 
           {/* ── 2. INPUT DATA PANEL ── */}
           <Card style={{ marginBottom:14 }}>
@@ -351,10 +385,23 @@ export default function MultiSource() {
                       Confidence: <b>{site.latest.score > 70 ? '91' : site.latest.score > 35 ? '78' : '85'}%</b>
                     </div>
                     <div style={{ fontSize:9, color:'#94a3b8', marginTop:4 }}>
-                      Based on {site.latest.score > 50 ? '8,261' : '8,261'} historical epochs
+                      Based on 8,261 historical epochs
                     </div>
                   </div>
                   <div style={{ display:'flex', flexDirection:'column' as const, gap:8 }}>
+                    {/* Network alert if other sites are worse */}
+                    {(() => {
+                      const maxScore = Math.max(...(data?.allData?.map((s:any) => s.latest.score) ?? [0]))
+                      const maxSite  = data?.allData?.find((s:any) => s.latest.score === maxScore)
+                      if (maxScore > site.latest.score && maxScore >= 35) {
+                        return (
+                          <div style={{ background:'#fef3c7', border:'1px solid #d9770644', borderRadius:8, padding:'7px 10px', fontSize:10, color:'#92400e' }}>
+                            ⚠ Network alert: <b>{maxSite?.meta?.name}</b> is at higher risk ({maxScore >= 70 ? 'CRITICAL' : 'WARNING'})
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                     <JKRLevel score={site.latest.score}/>
                     {/* Last updated per source */}
                     <div style={{ background:'#f8fafc', borderRadius:10, padding:'10px 12px', border:'1px solid #e2e8f0' }}>
