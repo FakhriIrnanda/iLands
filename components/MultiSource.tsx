@@ -239,7 +239,7 @@ export default function MultiSource() {
             {downloading ? (
               <><div style={{ width:11, height:11, border:'2px solid white', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/> PDF…</>
             ) : (
-              <><Download size={12}/> Export PDF</>
+              <><Download size={12}/> Download PDF</>
             )}
           </button>
           <div style={{ display:'flex', flexDirection:'column' as const, alignItems:'flex-end', gap:3 }}>
